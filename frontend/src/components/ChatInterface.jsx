@@ -64,6 +64,7 @@ function RealtimeTimer({ startTime }) {
 export default function ChatInterface({
   conversation,
   onSendMessage,
+  onStopStreaming,
   onUploadFile,
   isLoading,
   webSearchAvailable = false,
@@ -450,13 +451,27 @@ export default function ChatInterface({
                 <span className="toggle-label">🔍 Web</span>
               </label>
             )}
-            <button
-              type="submit"
-              className="send-button"
-              disabled={!input.trim() || isLoading || isUploading}
-            >
-              {conversation.messages.length === 0 ? 'Send' : 'Follow-up'}
-            </button>
+            {isLoading ? (
+              <button
+                type="button"
+                className="stop-button"
+                onClick={onStopStreaming}
+                title="Stop generating"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <rect x="3" y="3" width="10" height="10" fill="currentColor" rx="1"/>
+                </svg>
+                Stop
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="send-button"
+                disabled={!input.trim() || isLoading || isUploading}
+              >
+                {conversation.messages.length === 0 ? 'Send' : 'Follow-up'}
+              </button>
+            )}
           </div>
         </form>
     </div>
