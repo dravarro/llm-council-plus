@@ -32,6 +32,8 @@ function App() {
   const activeStreamingConvIdRef = useRef(null);
   // Track current conversation ID for streaming comparison (ref doesn't cause re-render issues)
   const currentConversationIdRef = useRef(null);
+  // Track abort controller for cancelling streaming requests
+  const abortControllerRef = useRef(null);
 
   // Helper to update streaming conversation state (handles case when user switched away)
   // FIX: Make ref the single source of truth, then sync React state from ref
@@ -302,6 +304,9 @@ function App() {
         isLoading: true
       });
 
+      // Create abort controller for this request
+      abortControllerRef.current = new AbortController();
+
       // Send message with streaming (pass attachments if any)
       await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
         switch (eventType) {
@@ -536,7 +541,7 @@ function App() {
           default:
             console.log('Unknown event type:', eventType);
         }
-      }, attachments, webSearch);
+      }, attachments, webSearch, abortControllerRef.current.signal);
     } catch (error) {
       console.error('Failed to send message:', error);
       // Remove optimistic messages on error
@@ -545,8 +550,55 @@ function App() {
         messages: prev.messages.slice(0, -2),
       }));
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
+
+  const handleStopStreaming = useCallback(() => {
+    if (abortControllerRef.current) {
+      console.log('Aborting stream...');
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+
+      // Clear streaming state
+      const streamingConvId = activeStreamingConvIdRef.current;
+      activeStreamingConvIdRef.current = null;
+      if (streamingConvId) {
+        streamingStateRef.current.delete(streamingConvId);
+      }
+
+      // Immediately clear loading flags from UI
+      setCurrentConversation((prev) => {
+        if (!prev || prev.messages.length === 0) return prev;
+
+        const lastIdx = prev.messages.length - 1;
+        const lastMsg = prev.messages[lastIdx];
+
+        // Clear all loading flags
+        const updatedMsg = {
+          ...lastMsg,
+          loading: {
+            stage1: false,
+            stage2: false,
+            stage3: false,
+          }
+        };
+
+        return {
+          ...prev,
+          messages: [...prev.messages.slice(0, -1), updatedMsg]
+        };
+      });
+
+      // Wait a moment for backend to save partial results, then reload
+      if (currentConversationId) {
+        setTimeout(() => {
+          loadConversation(currentConversationId);
+        }, 1000);
+      }
+    }
+  }, [currentConversationId, loadConversation]);
 
   // Show loading while checking setup/auth status
   if (!setupChecked) {
@@ -590,6 +642,7 @@ function App() {
       <ChatInterface
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
+        onStopStreaming={handleStopStreaming}
         onUploadFile={api.uploadFile}
         isLoading={isLoading}
         webSearchAvailable={webSearchAvailable}
