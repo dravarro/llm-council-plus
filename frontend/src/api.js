@@ -257,68 +257,79 @@ export const api = {
    * @param {string} content - The message content
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @param {Array} attachments - Optional array of file attachments
+   * @param {boolean} webSearch - Whether to enable web search
+   * @param {AbortSignal} abortSignal - Optional abort signal for cancelling the request
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent, attachments = null, webSearch = false) {
-    const body = { content };
-    if (attachments && attachments.length > 0) {
-      body.attachments = attachments;
-    }
-    if (webSearch) {
-      body.web_search = true;
-    }
-
-    const response = await authFetch(
-      `${API_BASE}/api/conversations/${conversationId}/message/stream`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
+  async sendMessageStream(conversationId, content, onEvent, attachments = null, webSearch = false, abortSignal = null) {
+    try {
+      const body = { content };
+      if (attachments && attachments.length > 0) {
+        body.attachments = attachments;
       }
-    );
+      if (webSearch) {
+        body.web_search = true;
+      }
 
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
+      const response = await authFetch(
+        `${API_BASE}/api/conversations/${conversationId}/message/stream`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: abortSignal,
+        }
+      );
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      // Keep the last incomplete line in the buffer
-      buffer = lines.pop() || '';
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          try {
-            const event = JSON.parse(data);
-            onEvent(event.type, event);
-          } catch (e) {
-            console.error('Failed to parse SSE event:', e);
+        // Keep the last incomplete line in the buffer
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            try {
+              const event = JSON.parse(data);
+              onEvent(event.type, event);
+            } catch (e) {
+              console.error('Failed to parse SSE event:', e);
+            }
           }
         }
       }
-    }
 
-    // Process any remaining data in buffer
-    if (buffer.startsWith('data: ')) {
-      const data = buffer.slice(6);
-      try {
-        const event = JSON.parse(data);
-        onEvent(event.type, event);
-      } catch (e) {
-        // Ignore incomplete final chunk
+      // Process any remaining data in buffer
+      if (buffer.startsWith('data: ')) {
+        const data = buffer.slice(6);
+        try {
+          const event = JSON.parse(data);
+          onEvent(event.type, event);
+        } catch (e) {
+          // Ignore incomplete final chunk
+        }
       }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('Stream aborted by user');
+        return; // Exit gracefully without throwing
+      }
+      throw error; // Re-throw other errors
     }
   },
 
