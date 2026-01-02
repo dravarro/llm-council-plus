@@ -112,8 +112,6 @@ export default function ModelSelector({ isOpen, onClose, onConfirm }) {
           setSelectedModels(validModels);
           setChairmanModel(validChairman);
           setActivePreset('last');
-          // Auto-scroll to first selected model
-          setTimeout(() => scrollToModel(validModels[0]), 100);
           return;
         }
       }
@@ -269,8 +267,6 @@ export default function ModelSelector({ isOpen, onClose, onConfirm }) {
       setSelectedModels(selectedIds);
       setChairmanModel(chairmanId || selectedIds[0]);
       setActivePreset(presetKey);
-      // Auto-scroll to first selected model
-      setTimeout(() => scrollToModel(selectedIds[0]), 100);
     }
   };
 
